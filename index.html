@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Headset Priority Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+/* Layout: instrument panel — controls column left, live readout (diagram, ladder, outputs, log) right; stacks on phones */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --line:#d3dae2; --fg:#16202b; --muted:#5d6b7a;
+  --accent:#1f6f8b; --accent-soft:#d8eaf1;
+  --l1:#c62828; --l2:#e06a00; --l3:#b8930b; --l4:#1f8a70;
+  --l1s:#fbe3e3; --l2s:#fdebd9; --l3s:#f8f0cf; --l4s:#dcf1ea;
+  --cone:#9fb3c4; --hot:#d84315;
+  --display:"Barlow",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --panel:#17202a; --line:#2a3644; --fg:#e4eaf0; --muted:#94a3b3;
+  --accent:#5fb3d0; --accent-soft:#183544;
+  --l1:#ff6b6b; --l2:#ff9a3d; --l3:#e6c34a; --l4:#4cc9a4;
+  --l1s:#3a1a1c; --l2s:#3a2614; --l3s:#363016; --l4s:#13332b;
+  --cone:#4a5d70; --hot:#ff7043; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --panel:#17202a; --line:#2a3644; --fg:#e4eaf0; --muted:#94a3b3;
+  --accent:#5fb3d0; --accent-soft:#183544;
+  --l1:#ff6b6b; --l2:#ff9a3d; --l3:#e6c34a; --l4:#4cc9a4;
+  --l1s:#3a1a1c; --l2s:#3a2614; --l3s:#363016; --l4s:#13332b;
+  --cone:#4a5d70; --hot:#ff7043; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:15px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-size:1.6rem;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;font-size:.92rem}
+.grid{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:12px;min-width:0}
+.panel h2{margin:0;font-size:.74rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.col{display:grid;gap:16px;align-content:start;min-width:0}
+.row{display:grid;grid-template-columns:62px 1fr 74px;align-items:center;gap:10px}
+.row label{font-weight:600;font-size:.88rem}
+.val{font-family:var(--mono);font-size:.82rem;text-align:right;font-variant-numeric:tabular-nums}
+.val.hot{color:var(--hot);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,button{font:inherit;font-size:.9rem;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:7px 11px}
+button{cursor:pointer;font-weight:600}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+button.sos{background:var(--l1s);color:var(--l1);border-color:var(--l1)}
+button.sos[aria-pressed="true"]{background:var(--l1);color:var(--panel)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.hint{color:var(--muted);font-size:.8rem;margin:0}
+.status{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+@media (max-width:640px){.status{grid-template-columns:minmax(0,1fr)}}
+svg{width:100%;height:auto;display:block}
+.ladder{display:grid;gap:6px}
+.step{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:7px;border:1px solid var(--line);opacity:.5;transition:opacity .15s}
+.step .n{font-family:var(--mono);font-weight:600}
+.step .t{font-weight:600}
+.step .d{font-size:.78rem;color:var(--muted)}
+.step.on{opacity:1;border-width:2px}
+.step[data-l="1"].on{background:var(--l1s);border-color:var(--l1)} .step[data-l="1"] .n{color:var(--l1)}
+.step[data-l="2"].on{background:var(--l2s);border-color:var(--l2)} .step[data-l="2"] .n{color:var(--l2)}
+.step[data-l="3"].on{background:var(--l3s);border-color:var(--l3)} .step[data-l="3"] .n{color:var(--l3)}
+.step[data-l="4"].on{background:var(--l4s);border-color:var(--l4)} .step[data-l="4"] .n{color:var(--l4)}
+.outs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:520px){.outs{grid-template-columns:minmax(0,1fr)}}
+.out{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:6px;min-width:0}
+.out .k{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.out .v{font-family:var(--mono);font-size:.9rem;overflow-wrap:anywhere}
+.motors{display:flex;gap:6px}
+.m{flex:1;text-align:center;font-family:var(--mono);font-size:.75rem;padding:5px 0;border-radius:5px;border:1px solid var(--line);color:var(--muted)}
+.m.on{background:var(--l2);border-color:var(--l2);color:var(--panel);font-weight:600;animation:buzz .12s infinite}
+@keyframes buzz{50%{transform:translateX(1px)}}
+.reply{font-size:1.5rem;font-weight:700}
+.speech{font-family:var(--display);font-size:1rem;font-weight:500;min-height:2.6em}
+.speech.talking::before{content:"▶ ";color:var(--accent)}
+.log{font-family:var(--mono);font-size:.76rem;line-height:1.55;max-height:240px;overflow:auto;background:var(--bg);border-radius:7px;padding:8px 10px;border:1px solid var(--line)}
+.log div{white-space:pre-wrap;overflow-wrap:anywhere}
+.log .say{color:var(--accent)} .log .sos{color:var(--l1);font-weight:600} .log .mot{color:var(--l2)}
+.pbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.pbar i{display:block;height:100%;width:0;background:var(--accent)}
+.raw{font-family:var(--mono);font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce){.m.on{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Headset Priority Simulator</h1>
+      <p class="sub">Smart wearable navigation system · same arbitration logic as <code>headset.py</code>, running every 100 ms</p>
+    </div>
+    <div class="btns">
+      <button id="voiceBtn" type="button" aria-pressed="false">Voice: off</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" aria-labelledby="scH">
+        <h2 id="scH">Walking scenario</h2>
+        <div class="btns">
+          <button id="playBtn" class="primary" type="button">Play scenario</button>
+          <button id="stopBtn" type="button">Stop</button>
+        </div>
+        <div class="pbar"><i id="pbar"></i></div>
+        <p class="hint" id="scStep">Manual mode. Move the sliders or play the 12.6 s scenario from the script.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="stH">
+        <h2 id="stH">Stick ultrasonics (path, blocked &lt; 60 cm)</h2>
+        <div class="row"><label for="sL">Left</label><input id="sL" type="range" min="5" max="210" value="210"><span class="val" id="vsL"></span></div>
+        <div class="row"><label for="sC">Centre</label><input id="sC" type="range" min="5" max="210" value="210"><span class="val" id="vsC"></span></div>
+        <div class="row"><label for="sR">Right</label><input id="sR" type="range" min="5" max="210" value="210"><span class="val" id="vsR"></span></div>
+        <div class="btns">
+          <button id="btnSos" class="sos" type="button" aria-pressed="false">SOS button: released</button>
+        </div>
+        <p class="hint">Slider at the far right = no reading (999).</p>
+      </section>
+
+      <section class="panel" aria-labelledby="hdH">
+        <h2 id="hdH">Head ToF VL53L0X (blocked &lt; 80 cm)</h2>
+        <div class="row"><label for="hL">Left</label><input id="hL" type="range" min="5" max="210" value="150"><span class="val" id="vhL"></span></div>
+        <div class="row"><label for="hF">Front</label><input id="hF" type="range" min="5" max="210" value="180"><span class="val" id="vhF"></span></div>
+        <div class="row"><label for="hR">Right</label><input id="hR" type="range" min="5" max="210" value="160"><span class="val" id="vhR"></span></div>
+      </section>
+
+      <section class="panel" aria-labelledby="cmH">
+        <h2 id="cmH">Camera (YOLOv8n)</h2>
+        <div class="row" style="grid-template-columns:62px 1fr">
+          <label for="cam">Object</label>
+          <select id="cam">
+            <option value="">nothing detected</option>
+            <option>chair</option><option>person</option><option>door</option>
+            <option>car</option><option>bicycle</option><option>dog</option><option>bench</option><option>table</option>
+          </select>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-labelledby="vwH">
+        <h2 id="vwH">Top view</h2>
+        <svg id="view" viewBox="0 0 520 330" role="img" aria-label="Top view of user with sensor cones">
+          <g id="cones"></g>
+          <g id="person"></g>
+        </svg>
+      </section>
+
+      <div class="status">
+        <section class="panel" aria-labelledby="ldH">
+          <h2 id="ldH">Warning level (only one speaks)</h2>
+          <div class="ladder">
+            <div class="step" data-l="1"><span class="n">1</span><div><div class="t">Emergency</div><div class="d">Button pressed · SMS + call by stick</div></div><span class="d">Q</span></div>
+            <div class="step" data-l="2"><span class="n">2</span><div><div class="t">Head obstacle</div><div class="d">Head ToF &lt; 80 cm · speech + head motor</div></div><span class="d">Q</span></div>
+            <div class="step" data-l="3"><span class="n">3</span><div><div class="t">Path obstacle</div><div class="d">Stick &lt; 60 cm · stick motor only</div></div><span class="d">A</span></div>
+            <div class="step" data-l="4"><span class="n">4</span><div><div class="t">Object info</div><div class="d">All clear · names what the camera sees</div></div><span class="d">A</span></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="otH">
+          <h2 id="otH">Outputs</h2>
+          <div class="out"><span class="k">Speaker (espeak-ng)</span><span class="speech" id="speech">—</span></div>
+          <div class="outs" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+            <div class="out"><span class="k">Head motors</span>
+              <div class="motors"><span class="m" id="mleft">L</span><span class="m" id="mfront">F</span><span class="m" id="mright">R</span></div></div>
+            <div class="out"><span class="k">To stick</span><span class="reply" id="reply">A</span></div>
+          </div>
+          <div class="out"><span class="k">Bluetooth line in</span><span class="raw" id="raw"></span></div>
+        </section>
+      </div>
+
+      <section class="panel" aria-labelledby="lgH">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <h2 id="lgH">Console log</h2><button id="clr" type="button">Clear</button>
+        </div>
+        <div class="log" id="log" aria-live="polite"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- constants & logic copied from headset.py ----------
+const BLOCKED_CM=60, MAX_CM=200, HEAD_SAFE_CM=80, NO_READING=999, CYCLE_MS=100, SAY_REPEAT_S=3, OBJECT_REPEAT_S=4;
+
+function headBlocked(head){
+  const close=Object.entries(head).filter(([n,d])=>d>0&&d<HEAD_SAFE_CM).map(([n,d])=>[d,n]);
+  if(!close.length) return null;
+  close.sort((a,b)=>a[0]-b[0]||a[1].localeCompare(b[1]));
+  return close[0][1];
+}
+function sayDistance(cm){
+  if(cm>=NO_READING||cm>MAX_CM) return "more than 2 metres away";
+  if(cm<95) return `about ${Math.round(cm/10)*10} centimetres away`;
+  const m=cm/100;
+  return m<1.05?"about 1 metre away":`about ${m.toFixed(1)} metres away`;
+}
+function arbitrate(stick,head,label){
+  if(stick.btn===1) return [1,"Emergency message sent.",null,"Q"];
+  const zone=headBlocked(head);
+  if(zone) return [2,`Stop. Obstacle at head height, ${zone}.`,zone,"Q"];
+  if(["L","C","R"].some(k=>stick[k]<BLOCKED_CM)) return [3,null,null,"A"];
+  if(label) return [4,`${label[0].toUpperCase()+label.slice(1)} ahead, ${sayDistance(head.front)}.`,null,"A"];
+  return [4,null,null,"A"];
+}
+function parseStickLine(line){
+  const p=line.trim().split(",").map(s=>s.trim());
+  if(p.length===4&&p[0]==="SOS") return {type:"sos",lat:+p[1],lon:+p[2],fix:p[3]==="FIX"};
+  if(p.length!==5) return null;
+  return {type:"data",L:+p[0],C:+p[1],R:+p[2],side:p[3].toUpperCase(),btn:+p[4]};
+}
+// stick-side SIDE field (approximation of the Arduino's choice, display only)
+function sideOf(L,C,R){
+  const b=[L,C,R].map(v=>v<BLOCKED_CM);
+  if(b.every(x=>x)) return "STOP";
+  if(!b.some(x=>x)) return "CLEAR";
+  return L>=R?"LEFT":"RIGHT";
+}
+
+// ---------- UI wiring ----------
+const $=id=>document.getElementById(id);
+const sliders={sL:"vsL",sC:"vsC",sR:"vsR",hL:"vhL",hF:"vhF",hR:"vhR"};
+const toCm=v=>+v>=210?NO_READING:+v;
+let btn=0, pendingLines=[];
+
+function setSlider(id,cm){ $(id).value=cm>=NO_READING?210:Math.max(5,Math.min(209,cm)); }
+function showVals(){
+  for(const [s,v] of Object.entries(sliders)){
+    const cm=toCm($(s).value), lim=s[0]==="s"?BLOCKED_CM:HEAD_SAFE_CM;
+    $(v).textContent=cm>=NO_READING?"999 none":cm+" cm";
+    $(v).classList.toggle("hot",cm<lim);
+  }
+}
+function setBtn(v){
+  btn=v; $("btnSos").setAttribute("aria-pressed",v?"true":"false");
+  $("btnSos").textContent=v?"SOS button: PRESSED":"SOS button: released";
+}
+$("btnSos").addEventListener("click",()=>{
+  stopScenario();
+  const v=btn?0:1; setBtn(v);
+  if(v) pendingLines.push("SOS,34.204898,72.047798,FIX");
+});
+for(const s of Object.keys(sliders)) $(s).addEventListener("input",()=>{stopScenario();showVals();});
+$("cam").addEventListener("change",stopScenario);
+
+// ---------- speaker (repeat suppression + busy while talking, like Speaker class) ----------
+let voice=false, lastSaid={}, busyUntil=0;
+$("voiceBtn").addEventListener("click",()=>{
+  voice=!voice; $("voiceBtn").textContent="Voice: "+(voice?"on":"off");
+  $("voiceBtn").setAttribute("aria-pressed",voice);
+  if(!voice&&window.speechSynthesis) speechSynthesis.cancel();
+});
+function say(text,repeatS){
+  const now=performance.now()/1000;
+  if(text==null||now-(lastSaid[text]||0)<repeatS) return;
+  if(performance.now()<busyUntil) return;           // still talking
+  lastSaid[text]=now;
+  busyUntil=performance.now()+text.length*55+300;  // ~165 wpm
+  $("speech").textContent=`"${text}"`;
+  $("speech").classList.add("talking");
+  log(`   SPEAKER: "${text}"`,"say");
+  if(voice&&window.speechSynthesis){ try{const u=new SpeechSynthesisUtterance(text);u.rate=1.1;speechSynthesis.speak(u);}catch(e){} }
+}
+
+// ---------- log ----------
+function log(t,cls){
+  const d=document.createElement("div"); d.textContent=t; if(cls) d.className=cls;
+  const L=$("log"); L.appendChild(d); while(L.children.length>300) L.firstChild.remove();
+  L.scrollTop=L.scrollHeight;
+}
+$("clr").addEventListener("click",()=>$("log").textContent="");
+const ts=()=>new Date().toTimeString().slice(0,8);
+
+// ---------- top-view drawing ----------
+const NS="http://www.w3.org/2000/svg";
+const cx=260, headY=250, scale=1.05; // px per cm
+function cone(x,y,angDeg,cm,limit,label,spread){
+  const len=Math.min(cm>=NO_READING?210:cm,210)*scale, a=(angDeg-90)*Math.PI/180, s=spread*Math.PI/180;
+  const p1=[x+Math.cos(a-s)*len,y+Math.sin(a-s)*len], p2=[x+Math.cos(a+s)*len,y+Math.sin(a+s)*len];
+  const hot=cm<limit;
+  const g=document.createElementNS(NS,"g");
+  const path=document.createElementNS(NS,"path");
+  path.setAttribute("d",`M${x},${y} L${p1[0]},${p1[1]} A${len},${len} 0 0 1 ${p2[0]},${p2[1]} Z`);
+  path.setAttribute("fill",hot?"var(--hot)":"var(--cone)");
+  path.setAttribute("fill-opacity",hot?".55":".3");
+  path.setAttribute("stroke",hot?"var(--hot)":"var(--cone)");
+  g.appendChild(path);
+  if(cm<NO_READING){
+    const ex=x+Math.cos(a)*len, ey=y+Math.sin(a)*len;
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",ex);t.setAttribute("y",ey-4);t.setAttribute("text-anchor","middle");
+    t.setAttribute("font-family","JetBrains Mono, monospace");t.setAttribute("font-size","11");
+    t.setAttribute("fill",hot?"var(--hot)":"var(--muted)");t.textContent=label+" "+cm;
+    g.appendChild(t);
+  }
+  return g;
+}
+function drawView(stick,head,label){
+  const C=$("cones"); C.textContent="";
+  // reference rings
+  for(const r of [60,80,200]){
+    const c=document.createElementNS(NS,"circle");
+    c.setAttribute("cx",cx);c.setAttribute("cy",headY);c.setAttribute("r",r*scale);
+    c.setAttribute("fill","none");c.setAttribute("stroke","var(--line)");c.setAttribute("stroke-dasharray","3 4");
+    C.appendChild(c);
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",cx+r*scale+4);t.setAttribute("y",headY+12);t.setAttribute("font-size","10");
+    t.setAttribute("font-family","JetBrains Mono, monospace");t.setAttribute("fill","var(--muted)");t.textContent=r+" cm";
+    C.appendChild(t);
+  }
+  // stick cones (from stick tip, ahead-left of user)
+  const sx=cx+38, sy=headY-34;
+  C.appendChild(cone(sx,sy,-35,stick.L,BLOCKED_CM,"SL",11));
+  C.appendChild(cone(sx,sy,0,stick.C,BLOCKED_CM,"SC",11));
+  C.appendChild(cone(sx,sy,35,stick.R,BLOCKED_CM,"SR",11));
+  // head cones
+  C.appendChild(cone(cx,headY,-55,head.left,HEAD_SAFE_CM,"HL",13));
+  C.appendChild(cone(cx,headY,0,head.front,HEAD_SAFE_CM,"HF",13));
+  C.appendChild(cone(cx,headY,55,head.right,HEAD_SAFE_CM,"HR",13));
+  if(label){
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",cx);t.setAttribute("y",24);t.setAttribute("text-anchor","middle");
+    t.setAttribute("font-size","14");t.setAttribute("font-weight","600");t.setAttribute("fill","var(--accent)");
+    t.textContent="camera: "+label; C.appendChild(t);
+  }
+  const P=$("person"); if(!P.childElementCount){
+    P.innerHTML=`<line x1="${cx+12}" y1="${headY+4}" x2="${sx}" y2="${sy}" stroke="var(--fg)" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="${cx}" cy="${headY+16}" rx="30" ry="14" fill="var(--panel)" stroke="var(--fg)" stroke-width="2"/>
+      <circle cx="${cx}" cy="${headY}" r="14" fill="var(--panel)" stroke="var(--fg)" stroke-width="2"/>
+      <circle cx="${sx}" cy="${sy}" r="4" fill="var(--fg)"/>
+      <text x="${cx}" y="${headY+50}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="Barlow, sans-serif">user (headset) + stick</text>`;
+  }
+}
+
+// ---------- scenario from headset.py ----------
+const SCENARIO=[
+  [2.0,"999,999,999,CLEAR,0",[150,180,160],"chair"],
+  [2.0,"40,150,999,RIGHT,0",[150,170,160],null],
+  [2.0,"120,35,180,RIGHT,0",[140,50,160],null],
+  [1.0,"999,999,999,CLEAR,1",[150,45,160],"person"],
+  [0.1,"SOS,34.204898,72.047798,FIX",[150,45,160],"person"],
+  [1.5,"999,999,999,CLEAR,1",[150,45,160],"person"],
+  [2.0,"20,25,30,STOP,0",[150,170,160],null],
+  [2.0,"150,180,190,CLEAR,0",[150,95,160],"door"],
+];
+const TOTAL=SCENARIO.reduce((a,s)=>a+s[0],0);
+let scT0=null, scIdx=-1;
+function stopScenario(){ if(scT0!==null){ scT0=null; scIdx=-1; $("scStep").textContent="Manual mode."; $("pbar").style.width="0"; log("-- scenario stopped, manual mode --"); } }
+$("playBtn").addEventListener("click",()=>{ stopScenario(); scT0=performance.now(); log("headset.py --sim : fake stick, ToF and camera"); });
+$("stopBtn").addEventListener("click",stopScenario);
+
+function scenarioInputs(){
+  let t=(performance.now()-scT0)/1000;
+  $("pbar").style.width=Math.min(100,t/TOTAL*100)+"%";
+  for(let i=0;i<SCENARIO.length;i++){
+    const [dur,line,h,cam]=SCENARIO[i];
+    if(t<dur){
+      if(i!==scIdx){
+        scIdx=i;
+        $("scStep").textContent=`Step ${i+1} of ${SCENARIO.length} · ${line}`;
+        const m=parseStickLine(line);
+        if(m&&m.type==="data"){ setSlider("sL",m.L);setSlider("sC",m.C);setSlider("sR",m.R);setBtn(m.btn); }
+        setSlider("hL",h[0]);setSlider("hF",h[1]);setSlider("hR",h[2]);
+        $("cam").value=cam||""; showVals();
+      }
+      return line;
+    }
+    t-=dur;
+  }
+  scT0=null; scIdx=-1; $("pbar").style.width="100%";
+  $("scStep").textContent="Scenario finished. Manual mode."; log("\nscenario finished");
+  return null;
+}
+
+// ---------- main loop ----------
+let stick={L:NO_READING,C:NO_READING,R:NO_READING,side:"CLEAR",btn:0}, lastLevel=null, lastPrint="", motorState=undefined;
+const NAMES={1:"EMERGENCY",2:"HEAD OBSTACLE",3:"PATH OBSTACLE",4:"OBJECT INFO"};
+
+function tick(){
+  let lines=[];
+  if(scT0!==null){ const l=scenarioInputs(); if(l) lines.push(l); }
+  if(scT0===null){
+    const L=toCm($("sL").value),C=toCm($("sC").value),R=toCm($("sR").value);
+    lines.push(`${L},${C},${R},${sideOf(L,C,R)},${btn}`);
+  }
+  lines.push(...pendingLines); pendingLines=[];
+  const head={left:toCm($("hL").value),front:toCm($("hF").value),right:toCm($("hR").value)};
+  const label=$("cam").value||null;
+
+  for(const ln of lines){
+    const msg=parseStickLine(ln); if(!msg) continue;
+    if(msg.type==="sos"){
+      log(`   SOS from stick: ${msg.lat.toFixed(6)}, ${msg.lon.toFixed(6)} (${msg.fix?"GPS fix":"last known position"}); SMS sent by stick GSM`,"sos");
+    } else { stick=msg; $("raw").textContent=ln; }
+  }
+
+  const [level,speech,zone,reply]=arbitrate(stick,head,label);
+
+  const hs=`{'left': ${head.left}, 'front': ${head.front}, 'right': ${head.right}}`;
+  const line=`stick=${stick.L},${stick.C},${stick.R},${stick.side},${stick.btn}  head=${hs}  cam=${label}`;
+  if(level!==lastLevel||line!==lastPrint){
+    log(`[${ts()}] LEVEL ${level} ${NAMES[level].padEnd(13)} ${line}  -> stick '${reply}'`);
+    lastLevel=level; lastPrint=line;
+  }
+  const mz=level===2?zone:null;
+  if(mz!==motorState){ if(motorState!==undefined) log(`   HEAD MOTOR: ${mz?mz.toUpperCase():"off"}`,"mot"); motorState=mz; }
+  say(speech,level===4?OBJECT_REPEAT_S:SAY_REPEAT_S);
+
+  // UI
+  document.querySelectorAll(".step").forEach(s=>s.classList.toggle("on",+s.dataset.l===level));
+  for(const k of ["left","front","right"]) $("m"+k).classList.toggle("on",mz===k);
+  $("reply").textContent=reply;
+  $("reply").style.color=reply==="Q"?"var(--l2)":"var(--l4)";
+  if(performance.now()>=busyUntil) $("speech").classList.remove("talking");
+  drawView(stick,head,label);
+}
+showVals();
+setInterval(tick,CYCLE_MS);
+tick();
+</script>
+</body>
+</html>
